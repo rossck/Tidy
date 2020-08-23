@@ -1,0 +1,137 @@
+---
+title: "Read Me"
+author: "Ross"
+date: "8/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, include = TRUE, message = FALSE)
+```
+
+## Read in the required files
+
+In order to tidy the data, it must be written into R, this code can be seen below and will work provided the users working directory is the UCI HAR Dataset directory. This chunk also loads the dplyr package:
+
+```{r }
+library(dplyr)
+subject_train <- read.table("train/subject_train.txt")
+train <- read.table("train/X_train.txt")
+train_label <- read.table("train/y_train.txt")
+subject_test <- read.table("test/subject_test.txt")
+test <- read.table("test/X_test.txt")
+test_label <- read.table("test/y_test.txt")
+variables <- read.table("features.txt")
+variables <- as.list(variables[,2])
+activities <- read.table("activity_labels.txt")
+```
+
+## Objective 1: Merge training and test datasets
+
+The following code accomplishes that:
+
+```{r }
+mergeddata <- bind_rows(train, test)
+mergedlabel <- bind_rows(train_label, test_label)
+mergedsubject <- bind_rows(subject_train, subject_test)
+mergeddata <- as_tibble(mergeddata)
+data <- bind_cols(mergeddata, mergedlabel)
+data <- bind_cols(data, mergedsubject)
+data <- as_tibble(data)
+```
+
+## Objective 2: Extract only the measurements on mean and standard deviation for each
+
+Firstly, index of variables with mean or std are stored in cols.
+
+Then the code selects the columns as indexed by cols, and the last two columns appended, which includes the subjects, and the activity labels
+
+This data frame is stored in extracted.
+
+```{r}
+cols <- grep("mean|std", variables)
+extracted <- data[,c(cols, 562, 563)]
+```
+
+## Objective 3: Use descriptive activity names to name the activities in the data set
+
+To do this, I first created a function called assignactivity that converts the integers to their corresponding activities
+
+```{r}
+assignactivity <- function(x){
+  if(x == 1) {
+    x = "walking"
+  } else {
+      if (x == 2){
+        x = "walking upstairs"
+      } else {
+        if(x == 3){
+          x = "walking downstairs"
+        } else {
+          if(x == 4){
+            x = "sitting"
+          } else {
+            if(x == 5){
+              x = "standing"
+            } else {
+              if(x == 6){
+                x = "laying"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+```
+
+Then the codes uses this function with sapply on said column of the data.
+
+```{r}
+extracted2 = sapply(extracted$V1...562, assignactivity)
+```
+
+This extracted2 column is then appended to the dataset extracted
+
+```{r}
+labeled <- bind_cols(extracted, extracted2)
+```
+
+## Objective 4: Appropriately label the data set with descriptive variable names
+
+At this point, the variables are all named as "V1.., V2, V3, etc". The following code replaces these names with the names as provided by the features file.
+
+The additional 3 labels of "Activity Num", "ID", and "Activity" are added for the appended columns and this dataset is called "labeled"
+
+```{r}
+oldnames <- colnames(labeled)
+newlabels <- as.character(variables[cols])
+labeled <- rename_at(labeled, vars(oldnames), ~c(newlabels, "Activity Num", 
+                                                 "ID", "Activity"))
+```
+
+Next I removed the parentheses and dashes from the variable names as per principles of tidy data, and std was converted to standard deviation.
+
+```{r}
+names(labeled) <- gsub("-", " ", names(labeled))
+names(labeled) <- gsub("[()]", " ", names(labeled))
+names(labeled) <- gsub("std", "Standard Deviation", names(labeled))
+```
+
+## Objective 5: Create dataset with the average of each variable for each activity and each subject
+
+The following line takes the dataset and groups it by ID and Activity and calculates the mean of each variable for each and stores the result in "Final"
+
+```{r}
+Final <- labeled %>% group_by(labeled$ID, labeled$Activity) %>%
+  summarise_each(funs(mean))
+```
+
+Lastly, the irrelevant columns are removed and the columns of interest are renamed
+
+```{r}
+Final <- select(Final, -c("Activity", "Activity Num", "ID"))
+Final <- rename(Final, ID = "labeled$ID", Activity = "labeled$Activity")
+```
+
+
